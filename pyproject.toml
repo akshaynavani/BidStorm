@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bidstorm"
+version = "0.1.0"
+description = "Low-latency real-time bidding ad exchange simulator"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "grpcio>=1.62",
+    "protobuf>=4.25",
+    "redis>=5.0",
+    "aiokafka>=0.10",
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+    "joblib>=1.3",
+    "orjson>=3.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "grpcio-tools>=1.62",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "fakeredis>=2.21",
+    "ruff>=0.3",
+]
+load = ["locust>=2.24"]
+
+[project.scripts]
+bidstorm-dsp = "bidstorm.dsp.server:main"
+bidstorm-train = "bidstorm.ml.train_ctr:main"
+bidstorm-analytics = "bidstorm.analytics.consumer:main"
+
+[tool.setuptools.packages.find]
+include = ["bidstorm*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["bidstorm/proto/*_pb2*.py"]
