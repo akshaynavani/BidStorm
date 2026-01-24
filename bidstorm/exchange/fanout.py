@@ -94,7 +94,8 @@ class FanOut:
                 continue
             response = task.result()
             status = CallStatus.OK if response.bids else CallStatus.NO_BID
+            order = seq.get(task, len(seq))
             results.append(
-                DSPResult(client.name, status, latency, response=response, arrival_seq=seq.get(task, len(seq)))
+                DSPResult(client.name, status, latency, response=response, arrival_seq=order)
             )
         return results
