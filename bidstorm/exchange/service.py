@@ -12,11 +12,14 @@ import time
 from dataclasses import dataclass
 
 from bidstorm.config import ExchangeSettings
+from bidstorm.events.publisher import EventPublisher, NullPublisher
+from bidstorm.events.schema import AuctionEvent, BidSummary, WinSummary
 from bidstorm.exchange.auction import AuctionEngine, AuctionResult, CandidateBid
 from bidstorm.exchange.dmp import DMPClient
 from bidstorm.exchange.fanout import CallStatus, DSPResult, FanOut
 from bidstorm.exchange.metrics import ExchangeMetrics
 from bidstorm.exchange.registry import DSPRegistry
+from bidstorm.exchange.tracking import TrackingStore, WinRecord
 from bidstorm.models import Bid, BidRequest, BidResponse, NoBidReason, SeatBid
 from bidstorm.proto import bidding_pb2
 
@@ -71,6 +74,8 @@ class ExchangeService:
         registry: DSPRegistry,
         metrics: ExchangeMetrics | None = None,
         engine: AuctionEngine | None = None,
+        publisher: EventPublisher | None = None,
+        tracking: TrackingStore | None = None,
     ) -> None:
         self.settings = settings
         self.dmp = dmp
@@ -78,6 +83,8 @@ class ExchangeService:
         self.fanout = FanOut(registry.all())
         self.metrics = metrics or ExchangeMetrics()
         self.engine = engine or AuctionEngine(bid_increment=settings.bid_increment)
+        self.publisher = publisher or NullPublisher()
+        self.tracking = tracking or TrackingStore(dmp.redis)
         self.metrics.registered_dsps.set(len(registry))
         self._background: set[asyncio.Task] = set()
 
@@ -169,7 +176,52 @@ class ExchangeService:
         latency_ms = (time.perf_counter() - started) * 1000.0
         self.metrics.auction_latency.observe(latency_ms)
         self.metrics.requests.labels("filled" if result.winners() else "no_fill").inc()
-        return AuctionTrace(req, segments, dsp_results, result, latency_ms)
+        trace = AuctionTrace(req, segments, dsp_results, result, latency_ms)
+        self.spawn(self._after_auction(trace, candidates))
+        return trace
+
+    async def _after_auction(self, trace: AuctionTrace, candidates: list[CandidateBid]) -> None:
+        """Off the hot path: persist wins for tracking and emit the analytics event."""
+        winners = trace.result.winners()
+        for outcome in winners:
+            w = outcome.winner
+            try:
+                await self.tracking.record_win(
+                    WinRecord(
+                        auction_id=trace.request.id,
+                        imp_id=outcome.imp_id,
+                        bidder=w.bidder,
+                        price=outcome.clearing_price,
+                        creative_id=w.creative_id,
+                        predicted_ctr=w.predicted_ctr,
+                        adomain=w.adomain,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("failed to record win for %s: %r", trace.request.id, exc)
+
+        event = AuctionEvent(
+            auction_id=trace.request.id,
+            site_domain=trace.request.site.domain,
+            segments=trace.segments,
+            n_imps=len(trace.request.imp),
+            latency_ms=round(trace.latency_ms, 3),
+            auction_type=int(trace.request.at),
+            dsp_status={r.bidder: r.status.value for r in trace.dsp_results},
+            bids=[BidSummary(bidder=c.bidder, imp_id=c.imp_id, price=c.price) for c in candidates],
+            winners=[
+                WinSummary(
+                    imp_id=o.imp_id,
+                    bidder=o.winner.bidder,
+                    bid_price=o.winner.price,
+                    clearing_price=o.clearing_price,
+                    predicted_ctr=o.winner.predicted_ctr,
+                )
+                for o in winners
+            ],
+        )
+        await self.publisher.publish(event, key=trace.request.id)
+        self.metrics.events_published.labels("auctions").inc()
 
     def build_response(self, trace: AuctionTrace) -> BidResponse:
         seats: dict[str, list[Bid]] = {}
@@ -180,7 +232,7 @@ class ExchangeService:
                     id=f"{trace.request.id}-{outcome.imp_id}",
                     impid=outcome.imp_id,
                     price=outcome.clearing_price,
-                    adm=w.adm,
+                    adm=self.decorate_adm(w.adm, trace.request.id, outcome.imp_id),
                     adomain=[w.adomain] if w.adomain else [],
                     crid=w.creative_id,
                     nurl=self.impression_url(trace.request.id, outcome.imp_id),
@@ -195,6 +247,18 @@ class ExchangeService:
 
     def impression_url(self, request_id: str, imp_id: str) -> str:
         return f"{self.settings.public_url}/track/imp?auction={request_id}&imp={imp_id}"
+
+    def click_url(self, request_id: str, imp_id: str) -> str:
+        return f"{self.settings.public_url}/track/click?auction={request_id}&imp={imp_id}"
+
+    def decorate_adm(self, adm: str, request_id: str, imp_id: str) -> str:
+        """Wrap creative markup with the exchange's click redirect and impression pixel."""
+        imp_px = self.impression_url(request_id, imp_id)
+        click = self.click_url(request_id, imp_id)
+        return (
+            f'<div class="bidstorm-ad"><a href="{click}" target="_blank">{adm or ""}</a>'
+            f'<img src="{imp_px}" width="1" height="1" style="display:none"/></div>'
+        )
 
     async def handle(self, req: BidRequest) -> BidResponse:
         trace = await self.run_auction(req)
