@@ -6,10 +6,9 @@ Run with:
 
 from __future__ import annotations
 
+import base64
 import logging
 from contextlib import asynccontextmanager
-
-import base64
 
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import ORJSONResponse, RedirectResponse
