@@ -82,3 +82,28 @@ def test_health_and_metrics(bidders):
         text = client.get("/metrics").text
         assert "bidstorm_auction_latency_ms_bucket" in text
         assert 'bidstorm_auction_wins_total{bidder="a"} 1.0' in text
+
+
+def test_impression_and_click_tracking_publish_events(bidders):
+    from bidstorm.events.publisher import InMemoryPublisher
+
+    svc = make_service(bidders)
+    svc.publisher = InMemoryPublisher()
+    with TestClient(create_app(svc)) as client:
+        client.post("/openrtb2/auction", json=bid_request_payload(req_id="t1"))
+        client.portal.call(svc.drain)  # ensure the win was recorded
+        assert client.get("/track/imp", params={"auction": "t1", "imp": "1"}).status_code == 200
+        # Duplicate pixel fires are de-duplicated.
+        client.get("/track/imp", params={"auction": "t1", "imp": "1"})
+        r = client.get("/track/click", params={"auction": "t1", "imp": "1"},
+                       follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "https://a.example/"
+        assert client.get("/track/click", params={"auction": "nope", "imp": "1"}).status_code == 404
+
+    pub = svc.publisher
+    assert len(pub.of_type("auction")) == 1
+    assert len(pub.of_type("impression")) == 1
+    imp = pub.of_type("impression")[0]
+    assert imp.bidder == "a" and imp.price == pytest.approx(2.01)
+    assert len(pub.of_type("click")) == 1
