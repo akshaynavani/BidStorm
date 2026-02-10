@@ -1,0 +1,123 @@
+x-bidstorm: &bidstorm
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: bidstorm:local
+  restart: unless-stopped
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.7.0
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 6
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092 >/dev/null 2>&1"]
+      interval: 10s
+      retries: 15
+
+  dmp-seed:
+    <<: *bidstorm
+    restart: "no"
+    command: ["python", "scripts/seed_dmp.py", "--users", "50000"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis: { condition: service_healthy }
+
+  dsp-alpha:
+    <<: *bidstorm
+    command: ["bidstorm-dsp"]
+    environment:
+      DSP_NAME: dsp-alpha
+      DSP_PORT: "50051"
+      DSP_VALUE_PER_CLICK: "1.50"
+      DSP_DAILY_BUDGET: "2000"
+      DSP_TARGET_SEGMENTS: sports,auto,fitness
+      DSP_LATENCY_MS: "4"
+      DSP_LATENCY_JITTER_MS: "8"
+
+  dsp-beta:
+    <<: *bidstorm
+    command: ["bidstorm-dsp"]
+    environment:
+      DSP_NAME: dsp-beta
+      DSP_PORT: "50051"
+      DSP_VALUE_PER_CLICK: "1.20"
+      DSP_DAILY_BUDGET: "1500"
+      DSP_TARGET_SEGMENTS: finance,tech,travel
+      DSP_LATENCY_MS: "10"
+      DSP_LATENCY_JITTER_MS: "20"
+
+  dsp-gamma:
+    <<: *bidstorm
+    command: ["bidstorm-dsp"]
+    environment:
+      DSP_NAME: dsp-gamma
+      DSP_PORT: "50051"
+      DSP_VALUE_PER_CLICK: "2.00"
+      DSP_DAILY_BUDGET: "800"
+      DSP_TARGET_SEGMENTS: fashion,parents,home
+      # Deliberately slow: regularly blows the latency budget.
+      DSP_LATENCY_MS: "35"
+      DSP_LATENCY_JITTER_MS: "60"
+
+  exchange:
+    <<: *bidstorm
+    ports: ["8000:8000"]
+    environment:
+      EXCHANGE_TMAX_MS: "80"
+      EXCHANGE_OVERHEAD_MS: "10"
+      EXCHANGE_AUCTION_TYPE: "2"
+      EXCHANGE_PUBLIC_URL: http://localhost:8000
+      EXCHANGE_DSP_ENDPOINTS: dsp-alpha=dsp-alpha:50051,dsp-beta=dsp-beta:50051,dsp-gamma=dsp-gamma:50051
+      REDIS_URL: redis://redis:6379/0
+      DMP_TIMEOUT_MS: "5"
+      KAFKA_ENABLED: "true"
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      dsp-alpha: { condition: service_started }
+      dsp-beta: { condition: service_started }
+      dsp-gamma: { condition: service_started }
+
+  analytics:
+    <<: *bidstorm
+    command: ["bidstorm-analytics"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+
+  locust:
+    image: locustio/locust:2.24.1
+    profiles: ["load"]
+    ports: ["8089:8089"]
+    volumes:
+      - ./loadtest:/mnt/loadtest:ro
+    command: ["-f", "/mnt/loadtest/locustfile.py", "--host", "http://exchange:8000"]
+    depends_on: [exchange]
