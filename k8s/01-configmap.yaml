@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bidstorm-config
+  namespace: bidstorm
+data:
+  REDIS_URL: redis://redis:6379/0
+  DMP_TIMEOUT_MS: "5"
+  KAFKA_ENABLED: "true"
+  # Point at your Kafka cluster (e.g. a Strimzi bootstrap service).
+  KAFKA_BOOTSTRAP: bidstorm-kafka-bootstrap:9092
+  KAFKA_TOPIC_PREFIX: bidstorm
+  EXCHANGE_TMAX_MS: "80"
+  EXCHANGE_OVERHEAD_MS: "10"
+  EXCHANGE_AUCTION_TYPE: "2"
+  EXCHANGE_PUBLIC_URL: http://bidstorm.local
+  # Headless services give the exchange one channel per DSP service; gRPC client-side
+  # round-robin across pods would need a "dns:///" target plus a service config.
+  EXCHANGE_DSP_ENDPOINTS: dsp-alpha=dsp-alpha:50051,dsp-beta=dsp-beta:50051,dsp-gamma=dsp-gamma:50051
