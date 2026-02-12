@@ -14,6 +14,7 @@ doubles as an SLA-violation rate.
 from __future__ import annotations
 
 import random
+import time
 import uuid
 from urllib.parse import urlsplit
 
@@ -72,14 +73,16 @@ class PublisherAdServer(FastHttpUser):
 
     @task
     def auction(self) -> None:
+        started = time.perf_counter()
         with self.client.post(
             "/openrtb2/auction", json=make_bid_request(), name="auction", catch_response=True
         ) as resp:
+            elapsed_ms = (time.perf_counter() - started) * 1000
             if resp.status_code not in (200, 204):
                 resp.failure(f"unexpected status {resp.status_code}")
                 return
-            if resp.elapsed.total_seconds() * 1000 > SLA_MS:
-                resp.failure(f"SLA breach: {resp.elapsed.total_seconds() * 1000:.1f} ms")
+            if elapsed_ms > SLA_MS:
+                resp.failure(f"SLA breach: {elapsed_ms:.1f} ms")
                 return
             resp.success()
             if resp.status_code == 204:
