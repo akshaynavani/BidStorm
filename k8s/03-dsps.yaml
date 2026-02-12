@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dsp-alpha
+  namespace: bidstorm
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: dsp-alpha }
+  template:
+    metadata:
+      labels: { app: dsp-alpha, tier: dsp }
+    spec:
+      containers:
+        - name: dsp
+          image: bidstorm:latest
+          imagePullPolicy: IfNotPresent
+          command: ["bidstorm-dsp"]
+          env:
+            - { name: DSP_NAME, value: dsp-alpha }
+            - { name: DSP_PORT, value: "50051" }
+            - { name: DSP_VALUE_PER_CLICK, value: "1.50" }
+            - { name: DSP_DAILY_BUDGET, value: "2000" }
+            - { name: DSP_TARGET_SEGMENTS, value: "sports,auto,fitness" }
+            - { name: DSP_LATENCY_MS, value: "4" }
+            - { name: DSP_LATENCY_JITTER_MS, value: "8" }
+          ports: [{ containerPort: 50051, name: grpc }]
+          readinessProbe:
+            tcpSocket: { port: grpc }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dsp-alpha
+  namespace: bidstorm
+spec:
+  selector: { app: dsp-alpha }
+  ports: [{ port: 50051, targetPort: grpc, name: grpc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dsp-beta
+  namespace: bidstorm
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: dsp-beta }
+  template:
+    metadata:
+      labels: { app: dsp-beta, tier: dsp }
+    spec:
+      containers:
+        - name: dsp
+          image: bidstorm:latest
+          imagePullPolicy: IfNotPresent
+          command: ["bidstorm-dsp"]
+          env:
+            - { name: DSP_NAME, value: dsp-beta }
+            - { name: DSP_PORT, value: "50051" }
+            - { name: DSP_VALUE_PER_CLICK, value: "1.20" }
+            - { name: DSP_DAILY_BUDGET, value: "1500" }
+            - { name: DSP_TARGET_SEGMENTS, value: "finance,tech,travel" }
+            - { name: DSP_LATENCY_MS, value: "10" }
+            - { name: DSP_LATENCY_JITTER_MS, value: "20" }
+          ports: [{ containerPort: 50051, name: grpc }]
+          readinessProbe:
+            tcpSocket: { port: grpc }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dsp-beta
+  namespace: bidstorm
+spec:
+  selector: { app: dsp-beta }
+  ports: [{ port: 50051, targetPort: grpc, name: grpc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dsp-gamma
+  namespace: bidstorm
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: dsp-gamma }
+  template:
+    metadata:
+      labels: { app: dsp-gamma, tier: dsp }
+    spec:
+      containers:
+        - name: dsp
+          image: bidstorm:latest
+          imagePullPolicy: IfNotPresent
+          command: ["bidstorm-dsp"]
+          env:
+            - { name: DSP_NAME, value: dsp-gamma }
+            - { name: DSP_PORT, value: "50051" }
+            - { name: DSP_VALUE_PER_CLICK, value: "2.00" }
+            - { name: DSP_DAILY_BUDGET, value: "800" }
+            - { name: DSP_TARGET_SEGMENTS, value: "fashion,parents,home" }
+            - { name: DSP_LATENCY_MS, value: "35" }
+            - { name: DSP_LATENCY_JITTER_MS, value: "60" }
+          ports: [{ containerPort: 50051, name: grpc }]
+          readinessProbe:
+            tcpSocket: { port: grpc }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dsp-gamma
+  namespace: bidstorm
+spec:
+  selector: { app: dsp-gamma }
+  ports: [{ port: 50051, targetPort: grpc, name: grpc }]
