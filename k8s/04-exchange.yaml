@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exchange
+  namespace: bidstorm
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: exchange }
+  template:
+    metadata:
+      labels: { app: exchange }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: exchange
+          image: bidstorm:latest
+          imagePullPolicy: IfNotPresent
+          envFrom: [{ configMapRef: { name: bidstorm-config } }]
+          ports: [{ containerPort: 8000, name: http }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 500m, memory: 256Mi }
+            limits: { cpu: "2", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exchange
+  namespace: bidstorm
+spec:
+  selector: { app: exchange }
+  ports: [{ port: 80, targetPort: http, name: http }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: exchange
+  namespace: bidstorm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: exchange
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }

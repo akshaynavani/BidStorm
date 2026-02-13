@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics
+  namespace: bidstorm
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: analytics }
+  template:
+    metadata:
+      labels: { app: analytics }
+    spec:
+      containers:
+        - name: consumer
+          image: bidstorm:latest
+          imagePullPolicy: IfNotPresent
+          command: ["bidstorm-analytics"]
+          envFrom: [{ configMapRef: { name: bidstorm-config } }]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dmp-seed
+  namespace: bidstorm
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: bidstorm:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "scripts/seed_dmp.py", "--users", "50000"]
+          envFrom: [{ configMapRef: { name: bidstorm-config } }]
