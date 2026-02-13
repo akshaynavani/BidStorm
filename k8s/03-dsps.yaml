@@ -38,6 +38,7 @@ metadata:
   name: dsp-alpha
   namespace: bidstorm
 spec:
+  clusterIP: None
   selector: { app: dsp-alpha }
   ports: [{ port: 50051, targetPort: grpc, name: grpc }]
 ---
@@ -81,6 +82,7 @@ metadata:
   name: dsp-beta
   namespace: bidstorm
 spec:
+  clusterIP: None
   selector: { app: dsp-beta }
   ports: [{ port: 50051, targetPort: grpc, name: grpc }]
 ---
@@ -124,5 +126,6 @@ metadata:
   name: dsp-gamma
   namespace: bidstorm
 spec:
+  clusterIP: None
   selector: { app: dsp-gamma }
   ports: [{ port: 50051, targetPort: grpc, name: grpc }]

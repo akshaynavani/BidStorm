@@ -31,6 +31,8 @@ class GrpcBidderClient:
                 ("grpc.keepalive_time_ms", 30_000),
                 ("grpc.http2.max_pings_without_data", 0),
                 ("grpc.enable_retries", 0),  # retries make no sense inside an 80 ms budget
+                # With a dns:/// target on a headless service this spreads load over pods.
+                ("grpc.lb_policy_name", "round_robin"),
             ],
         )
         self._stub = bidding_pb2_grpc.BidderStub(self._channel)

@@ -14,6 +14,6 @@ data:
   EXCHANGE_OVERHEAD_MS: "10"
   EXCHANGE_AUCTION_TYPE: "2"
   EXCHANGE_PUBLIC_URL: http://bidstorm.local
-  # Headless services give the exchange one channel per DSP service; gRPC client-side
-  # round-robin across pods would need a "dns:///" target plus a service config.
-  EXCHANGE_DSP_ENDPOINTS: dsp-alpha=dsp-alpha:50051,dsp-beta=dsp-beta:50051,dsp-gamma=dsp-gamma:50051
+  # DSP services are headless; the dns:/// scheme lets each gRPC channel resolve every pod
+  # and round-robin across them (a ClusterIP would pin a long-lived channel to one pod).
+  EXCHANGE_DSP_ENDPOINTS: dsp-alpha=dns:///dsp-alpha:50051,dsp-beta=dns:///dsp-beta:50051,dsp-gamma=dns:///dsp-gamma:50051
