@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Generated gRPC stubs (run `make proto`)
+bidstorm/proto/*_pb2.py
+bidstorm/proto/*_pb2.pyi
+bidstorm/proto/*_pb2_grpc.py
+
+# Trained models and load-test output
+models/
+results/
+
+# Local secrets / env
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
